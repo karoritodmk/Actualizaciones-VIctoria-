@@ -1,0 +1,50 @@
+import { StyleSheet } from 'react-native';
+import { VictoriaColors } from '@/constants/victoria-theme';
+
+export const styles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(143, 164, 126, 0.55)',
+    backgroundColor: 'rgba(226, 235, 217, 0.7)',
+  },
+  cardPressed: { backgroundColor: 'rgba(226, 235, 217, 1)' },
+  icono: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: VictoriaColors.darkGreen,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textos: { flex: 1, minWidth: 0, gap: 2 },
+  nombre: { fontSize: 13, fontWeight: '700', color: VictoriaColors.textOnLight },
+  detalle: { fontSize: 11, color: '#556b5c' },
+  acciones: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  abrir: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: VictoriaColors.darkGreen,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 50,
+  },
+  abrirTexto: { color: VictoriaColors.white, fontSize: 12, fontWeight: '600' },
+  quitar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 50,
+    borderWidth: 1,
+    borderColor: 'rgba(179, 38, 30, 0.45)',
+  },
+  quitarConfirmar: { backgroundColor: 'rgba(179, 38, 30, 0.12)', borderColor: '#b3261e' },
+  quitarTexto: { color: '#b3261e', fontSize: 11, fontWeight: '600' },
+});
