@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status , UploadFile
 from models.programa import Programa
 from models.coordinacion import Coordinacion
 from schemas.programa import ProgramaCreate
+from core.uploads import guardar_documento, borrar_adjunto, nombre_para_mostrar
 
 
 class ProgramaService:
@@ -61,3 +62,55 @@ class ProgramaService:
         self.db.delete(programa)
         self.db.commit()
         return {"mensaje": "Programa eliminado exitosamente."}
+
+
+    async def adjuntar_archivo(self, id_programa: int, archivo: UploadFile):
+        programa = self.obtener_programa_por_id(id_programa)
+        nombre = nombre_para_mostrar(archivo, "documento")
+        url_nueva = await guardar_documento(archivo)
+        url_vieja = programa.archivo_url
+        try:
+            programa.archivo_url = url_nueva
+            programa.archivo_nombre = nombre
+            self.db.commit()
+            self.db.refresh(programa)
+        except Exception:
+            self.db.rollback()
+            borrar_adjunto(url_nueva)
+            raise
+        if url_vieja:
+            borrar_adjunto(url_vieja)  # el documento anterior se reemplaza
+        return programa
+
+    def quitar_archivo(self, id_programa: int):
+        programa = self.obtener_programa_por_id(id_programa)
+        url_vieja = programa.archivo_url
+        programa.archivo_url = None
+        programa.archivo_nombre = None
+        self.db.commit()
+        self.db.refresh(programa)
+        if url_vieja:
+            borrar_adjunto(url_vieja)
+        return programa
+    
+    def obtener_programas(self, id_sede: int | None = None):
+        q = self.db.query(Programa)
+        if id_sede is not None:
+            q = q.filter(Programa.id_sede == id_sede)
+        return q.all()
+
+
+
+
+
+    def _validar_coordinacion(self, id_coordinacion: int | None):
+        if id_coordinacion is None:
+            return  # opcional: los programas de una sede no la eligen
+        existe = self.db.query(Coordinacion).filter(
+            Coordinacion.id_coordinacion == id_coordinacion
+        ).first()
+        if not existe:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"La coordinación con id {id_coordinacion} no existe.",
+            ) 

@@ -98,6 +98,10 @@ export const styles = StyleSheet.create({
     color: '#333333',
     lineHeight: 18,
   },
+  detailIndent: { paddingLeft: 12 },
+  archivoBloque: { gap: 6, marginTop: 6 },
+  archivoModal: { gap: 6, marginBottom: 12 },
+  uploadHint: { fontSize: 11, color: '#6b7d70', textAlign: 'center', paddingHorizontal: 12 },
   detailLink: {
     color: VictoriaColors.textOnLight,
     textDecorationLine: 'underline',
@@ -170,6 +174,15 @@ export const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.7)',
     backgroundColor: 'rgba(255, 255, 255, 0.35)',
   },
+  uploadBoxListo: { 
+    borderColor: '#2e7d43',   
+    backgroundColor: 'rgba(143, 164, 126, 0.30)' 
+  },
+  uploadTextListo: { 
+   color: '#1c352d', 
+   fontWeight: '600' 
+  },
+
   uploadText: { fontSize: 13, color: '#6b7d70', textAlign: 'center' },
   saveButton: {
     backgroundColor: VictoriaColors.mutedGreen,
@@ -179,6 +192,14 @@ export const styles = StyleSheet.create({
   },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: VictoriaColors.white, fontSize: 15, fontWeight: '600' },
+  saveButtonRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8 
+  },
+  saveButtonSuccess: { 
+    backgroundColor: '#2e7d43' 
+  },
 });
 
 // Expo Router trata todo archivo dentro de src/app como una ruta y exige un

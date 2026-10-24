@@ -1,6 +1,7 @@
 import { API_BASE_URL } from '@/lib/api-config';
 import { getToken } from '@/lib/auth';
 import { mensajeDeError } from '@/lib/api-error';
+import type { ArchivoPortafolio, Carpeta, CarpetaAprendiz, Subcarpeta } from '@/lib/portafolio';
 
 export type FichaResumen = {
   id_ficha: number;
@@ -238,5 +239,96 @@ export function obtenerCompetenciaDetalle(
 ): Promise<CompetenciaDetalle> {
   return fetchCoordinador(
     `/instructores/${idInstructor}/portafolio/${trimestre}/competencias/${idCompetencia}`
+  );
+}
+
+// --------------------------------------------------------------------
+// Aprendices: perfil y portafolio (solo lectura para el coordinador)
+// --------------------------------------------------------------------
+/** Refleja schemas/coordinador.py::AprendizDetalleResponse */
+export type AprendizDetalle = {
+  id_usuario: number;
+  nombre: string;
+  apellido: string | null;
+  nombre_completo: string;
+  estado: string | null;
+  tipo_documento: string;
+  numero_documento: string;
+  fecha_nacimiento: string; // AAAA-MM-DD
+  telefono: string | null;
+  correo_personal: string;
+  correo_sena: string;
+  fecha_registro: string | null;
+  informacion_adicional: string | null;
+  hoja_vida_url: string | null;
+  // Ficha (null si aún no tiene una asignada)
+  id_ficha: number | null;
+  estado_ficha: string | null;
+  trimestre: string | null;
+  horario_ficha: string | null;
+  jornada: string | null;
+  fecha_inicio_ficha: string | null;
+  fecha_fin_ficha: string | null;
+  director_ficha: string | null;
+  // Programa de la ficha
+  programa_nombre: string | null;
+  nivel_formacion: string | null;
+  total_archivos_portafolio: number;
+};
+
+export function obtenerAprendizDetalle(idAprendiz: number): Promise<AprendizDetalle> {
+  return fetchCoordinador(`/aprendices/${idAprendiz}`);
+}
+
+const rutaPortafolio = (idAprendiz: number) => `/aprendices/${idAprendiz}/portafolio/carpetas`;
+const ruta = encodeURIComponent;
+
+/** Las 5 carpetas fijas del portafolio del aprendiz. */
+export function obtenerPortafolioAprendizCarpetas(idAprendiz: number): Promise<Carpeta[]> {
+  return fetchCoordinador(rutaPortafolio(idAprendiz));
+}
+
+/** Los 4 trimestres (TRIM_I..IV) de una carpeta. */
+export function obtenerPortafolioAprendizSubcarpetas(idAprendiz: number, categoria: string): Promise<Subcarpeta[]> {
+  return fetchCoordinador(`${rutaPortafolio(idAprendiz)}/${ruta(categoria)}/subcarpetas`);
+}
+
+/** Archivos sueltos de un trimestre. */
+export function obtenerPortafolioAprendizArchivosSubcarpeta(
+  idAprendiz: number,
+  categoria: string,
+  subcarpeta: string
+): Promise<ArchivoPortafolio[]> {
+  return fetchCoordinador(`${rutaPortafolio(idAprendiz)}/${ruta(categoria)}/subcarpetas/${ruta(subcarpeta)}/archivos`);
+}
+
+/** Carpetas que el aprendiz creó dentro de un trimestre. */
+export function obtenerPortafolioAprendizCarpetasSubcarpeta(
+  idAprendiz: number,
+  categoria: string,
+  subcarpeta: string
+): Promise<CarpetaAprendiz[]> {
+  return fetchCoordinador(`${rutaPortafolio(idAprendiz)}/${ruta(categoria)}/subcarpetas/${ruta(subcarpeta)}/carpetas`);
+}
+
+export function obtenerPortafolioAprendizDetalleCarpeta(
+  idAprendiz: number,
+  categoria: string,
+  subcarpeta: string,
+  idCarpeta: number
+): Promise<CarpetaAprendiz> {
+  return fetchCoordinador(
+    `${rutaPortafolio(idAprendiz)}/${ruta(categoria)}/subcarpetas/${ruta(subcarpeta)}/carpetas/${idCarpeta}`
+  );
+}
+
+export function obtenerPortafolioAprendizArchivosCarpeta(
+  idAprendiz: number,
+  categoria: string,
+  subcarpeta: string,
+  idCarpeta: number
+): Promise<ArchivoPortafolio[]> {
+  return fetchCoordinador(
+    `${rutaPortafolio(idAprendiz)}/${ruta(categoria)}/subcarpetas/${ruta(subcarpeta)}/carpetas/${idCarpeta}/archivos`
   );
 }

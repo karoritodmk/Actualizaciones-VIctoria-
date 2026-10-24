@@ -1,6 +1,6 @@
 """CRUD de Sede. Lectura abierta a cualquier usuario autenticado (se usa en
 formularios de alta de instructor); escritura exclusiva del coordinador."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -31,6 +31,17 @@ def obtener_sede(id_sede: int, db: Session = Depends(get_db), usuario_actual: Us
 @router.put("/{id_sede}", response_model=SedeResponse, dependencies=[Depends(require_coordinador)])
 def actualizar_sede(id_sede: int, data: SedeCreate, db: Session = Depends(get_db)):
     return SedeService(db).actualizar_sede(id_sede, data)
+
+
+@router.post("/{id_sede}/archivo", response_model=SedeResponse, dependencies=[Depends(require_coordinador)])
+async def subir_archivo_sede(id_sede: int, archivo: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Adjunta o reemplaza el archivo de información adicional de la sede."""
+    return await SedeService(db).guardar_archivo(id_sede, archivo)
+
+
+@router.delete("/{id_sede}/archivo", response_model=SedeResponse, dependencies=[Depends(require_coordinador)])
+def quitar_archivo_sede(id_sede: int, db: Session = Depends(get_db)):
+    return SedeService(db).quitar_archivo(id_sede)
 
 
 @router.delete("/{id_sede}", dependencies=[Depends(require_coordinador)])

@@ -14,16 +14,20 @@ Alternativamente, cierra y vuelve a abrir VS Code.
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate      # En Windows: venv\Scripts\activate
+ venv\Scripts\activate
 pip install -r requirements.txt
 
 python seed_roles.py ** para la creacion de usuarios 
 
 cp .env.example .env
+pip install openpyxl
+
+u
 
 python -c "import secrets; print(secrets.token_hex(32))" ** en este caso es para la secret key 
-uvicorn main:app --reload
 
+
+npm install docx-preview
 # Opción B: crear el esquema de una vez con el script SQL (ver sección 4)
 # y luego arrancar la API igual.
 

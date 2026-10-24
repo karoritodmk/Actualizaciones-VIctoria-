@@ -34,19 +34,16 @@ class Usuario(Base):
     id_ficha = Column(Integer, ForeignKey("ficha.id_ficha", ondelete="SET NULL"), nullable=True)
     id_coordinacion = Column(Integer, ForeignKey("coordinacion.id_coordinacion", ondelete="SET NULL"), nullable=True)
 
-    # --- Datos exclusivos de un usuario con rol instructor (de la carpeta
-    # de coordinación): perfil "Perfil del Instructor" que consulta el
-    # coordinador, y filtro de instructores por sede/tipo. Todos nullable:
-    # un aprendiz o coordinador nunca los llena.
+
     id_sede = Column(Integer, ForeignKey("sede.id_sede", ondelete="SET NULL"), nullable=True)
     tipo_instructor = Column(String(20), nullable=True)  # 'planta' | 'tecnico' | 'transversal'
     especialidad = Column(String(150), nullable=True)
     tipo_contrato = Column(String(50), nullable=True)
+    estado_contrato = Column(String(30), nullable=True)
     vigencia_contrato = Column(Date, nullable=True)
     hoja_vida_url = Column(String(300), nullable=True)
 
-    # Campo libre usado por el instructor al registrar un aprendiz nuevo
-    # ("Información Principal del Aprendiz").
+    
     informacion_adicional = Column(String(500), nullable=True)
 
     # Relaciones

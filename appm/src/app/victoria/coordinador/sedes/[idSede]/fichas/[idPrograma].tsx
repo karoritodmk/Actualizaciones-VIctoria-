@@ -1,7 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+
+import { FichaFormModal } from '@/components/victoria/ficha-form-modal';
+import { useVictoriaToast } from '@/components/victoria/toast';
 
 import { VictoriaScreenShell } from '@/components/victoria/screen-shell';
 import { ExitButton, FilterChip, PaneHeader, PillButton, SearchPill } from '@/components/victoria/ui';
@@ -29,18 +33,7 @@ function formatearFecha(iso: string) {
   return anio && mes && dia ? `${dia}/${mes}/${anio}` : iso;
 }
 
-/**
- * Fichas de un programa (vista a la que lleva "Ver Fichas" en Programas de
- * una sede). GET /api/coordinador/sedes/{id}/programas/{idPrograma}/fichas.
- *
- * Diurna / Nocturna / Mixta filtran la lista. Ficha no tiene columna de
- * jornada: el backend la deduce del texto de `horario`. Sin ninguna jornada
- * seleccionada se muestran TODAS las fichas (así las que no mencionan jornada
- * tampoco quedan escondidas); tocar la jornada activa la quita.
- *
- * "Aprendices", "Instructor jefe", "Competencias", "Añadir Ficha" y "Añadir
- * Competencia" son las siguientes vistas por integrar.
- */
+
 export default function CoordinadorFichasProgramaScreen() {
   const perfil = useRoleGuard(['coordinador']);
   const { idSede, idPrograma } = useLocalSearchParams<{ idSede: string; idPrograma: string }>();
@@ -53,6 +46,9 @@ export default function CoordinadorFichasProgramaScreen() {
   const [jornada, setJornada] = useState<Jornada | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [expandida, setExpandida] = useState<number | null>(null);
+  const { mostrarExito } = useVictoriaToast();
+  const [modalFicha, setModalFicha] = useState(false);
+
 
   const cargar = useCallback(() => {
     if (!perfil) return;
@@ -169,11 +165,33 @@ export default function CoordinadorFichasProgramaScreen() {
                   {abierta ? detalle(ficha) : null}
 
                   <View style={styles.cardActions}>
-                    {/* TODO: siguientes vistas -> aprendices, instructor jefe y competencias de la ficha. */}
-                    <PillButton label="Aprendices" icon="create-outline" variant="dark" />
-                    <PillButton label="Instructor jefe" icon="create-outline" variant="light" />
-                    <PillButton label="Competencias" icon="create-outline" variant="light" />
+                    <PillButton
+                      label="Aprendices"
+                      icon="create-outline"
+                      variant="dark"
+                      onPress={() =>
+                        router.push(`/victoria/coordinador/fichas/${ficha.id_ficha}/aprendices` as never)
+                      }
+                    />
+                    <PillButton
+                      label="Instructor jefe"
+                      icon="create-outline"
+                      variant="light"
+                      onPress={() =>
+                        router.push(`/victoria/coordinador/fichas/${ficha.id_ficha}/instructor-jefe` as never)
+                      }
+                    />
+                    <PillButton
+                      label="Competencias"
+                      icon="create-outline"
+                      variant="light"
+                      onPress={() =>
+                          router.push(`/victoria/coordinador/fichas/${ficha.id_ficha}/competencias` as never)
+                      }
+                    />
                   </View>
+
+
                 </View>
               );
             })}
@@ -183,7 +201,7 @@ export default function CoordinadorFichasProgramaScreen() {
         <View style={styles.side}>
           <SearchPill value={busqueda} onChangeText={setBusqueda} placeholder="Encontrar ficha" />
           {/* TODO: siguientes vistas -> añadir ficha y añadir competencia. */}
-          <Pressable style={styles.sideButton} accessibilityRole="button">
+          <Pressable style={styles.sideButton} onPress={() => setModalFicha(true)} accessibilityRole="button">
             <Ionicons name="cloud-upload-outline" size={15} color={VictoriaColors.white} />
             <Text style={styles.sideButtonText}>Añadir Ficha</Text>
           </Pressable>
@@ -193,6 +211,16 @@ export default function CoordinadorFichasProgramaScreen() {
           </Pressable>
         </View>
       </View>
+      <FichaFormModal
+        visible={modalFicha}
+        onClose={() => setModalFicha(false)}
+        idPrograma={idProgramaNum}
+        programaNombre={datos?.nombre ?? ''}
+        onCreada={(numero) => {
+          cargar();
+          mostrarExito(`Ficha ${numero} creada con éxito`);
+        }}
+      />
 
       <ExitButton />
     </VictoriaScreenShell>

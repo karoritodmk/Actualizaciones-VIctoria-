@@ -2,6 +2,23 @@ import { API_BASE_URL } from '@/lib/api-config';
 import { getToken } from '@/lib/auth';
 import { mensajeDeError } from '@/lib/api-error';
 
+/** Nombres que ve el usuario para las 5 carpetas fijas (iguales a CARPETAS_PORTAFOLIO del backend). */
+export const NOMBRES_CARPETA: Record<string, string> = {
+  planes_mejoramiento: 'Planes de mejoramiento',
+  etapa_productiva: 'Formato etapa productiva',
+  evidencias_aprendizaje: 'Evidencias de aprendizaje',
+  plan_trabajo_concertado: 'Plan de trabajo concertado',
+  otros: 'Otros',
+};
+
+/** Nombres de las 4 subcarpetas de trimestre (iguales a SUBCARPETAS_PORTAFOLIO del backend). */
+export const NOMBRES_SUBCARPETA: Record<string, string> = {
+  trim_1: 'TRIM_I',
+  trim_2: 'TRIM_II',
+  trim_3: 'TRIM_III',
+  trim_4: 'TRIM_IV',
+};
+
 /** GET /api/portafolio/carpetas — refleja schemas/portafolio.py::CarpetaPortafolio */
 export type Carpeta = {
   categoria: string;

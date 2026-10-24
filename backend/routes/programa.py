@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List
@@ -10,6 +10,11 @@ from services.programa_service import ProgramaService
 from core.security import get_current_active_user, require_coordinador
 
 router = APIRouter()
+
+
+@router.get("/", response_model=List[ProgramaResponse])
+def listar_programas(id_sede: int | None = None, db: Session = Depends(get_db), usuario_actual: Usuario = Depends(get_current_active_user)):
+    return ProgramaService(db).obtener_programas(id_sede)
 
 
 @router.post("/", response_model=ProgramaResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_coordinador)])
@@ -26,9 +31,8 @@ def crear_programa(data: ProgramaCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="El id_ficha, id_proyecto o id_competencia indicado no existe.")
 
 
-@router.get("/", response_model=List[ProgramaResponse])
-def listar_programas(db: Session = Depends(get_db), usuario_actual: Usuario = Depends(get_current_active_user)):
-    return ProgramaService(db).obtener_programas()
+def listar_programas(id_sede: int | None = None, db: Session = Depends(get_db), usuario_actual: Usuario = Depends(get_current_active_user)):
+    return ProgramaService(db).obtener_programas(id_sede)
 
 
 @router.get("/{id_programa}", response_model=ProgramaResponse)
@@ -54,3 +58,13 @@ def eliminar_programa(id_programa: int, db: Session = Depends(get_db)):
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="No se puede eliminar: todavía hay otros registros que apuntan a este programa.")
+
+
+@router.post("/{id_programa}/archivo", response_model=ProgramaResponse, dependencies=[Depends(require_coordinador)])
+async def subir_archivo_programa(id_programa: int, archivo: UploadFile = File(...), db: Session = Depends(get_db)):
+    return await ProgramaService(db).adjuntar_archivo(id_programa, archivo)
+
+
+@router.delete("/{id_programa}/archivo", response_model=ProgramaResponse, dependencies=[Depends(require_coordinador)])
+def quitar_archivo_programa(id_programa: int, db: Session = Depends(get_db)):
+    return ProgramaService(db).quitar_archivo(id_programa)

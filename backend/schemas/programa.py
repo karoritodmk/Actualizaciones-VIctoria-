@@ -28,6 +28,8 @@ class ProgramaCreate(ProgramaBase):
 class ProgramaResponse(ProgramaBase):
     id_programa: int
     id_sede: Optional[int] = None
+    archivo_nombre: Optional[str] = None
+    archivo_url : Optional [str] = None
 
     class Config:
         from_attributes = True

@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, UploadFile
 from models.competencia import Competencia
+from core.uploads import guardar_documento, borrar_adjunto, nombre_para_mostrar
 from models.usuario import Usuario
 from schemas.competencia import CompetenciaCreate
 
@@ -16,9 +17,42 @@ class CompetenciaService:
         self.db.refresh(nueva_competencia)
         return self._con_nombre_instructor(nueva_competencia)
 
-    def obtener_competencias(self):
-        competencias = self.db.query(Competencia).all()
+    def obtener_competencias(self, id_programa: int | None = None):
+        consulta = self.db.query(Competencia)
+        if id_programa is not None:
+            consulta = consulta.filter(Competencia.id_programa == id_programa)
+        competencias = consulta.all()
         return [self._con_nombre_instructor(c) for c in competencias]
+
+    async def adjuntar_archivo(self, id_competencia: int, archivo: UploadFile):
+        """Guarda el documento (PDF/Word) de actividades; si ya había uno, lo reemplaza."""
+        competencia = self.obtener_competencia_por_id(id_competencia)
+        nombre = nombre_para_mostrar(archivo, "documento")
+        url_nueva = await guardar_documento(archivo)
+        url_vieja = competencia.archivo_url
+        try:
+            competencia.archivo_url = url_nueva
+            competencia.archivo_nombre = nombre
+            self.db.commit()
+            self.db.refresh(competencia)
+        except Exception:
+            self.db.rollback()
+            borrar_adjunto(url_nueva)
+            raise
+        if url_vieja:
+            borrar_adjunto(url_vieja)
+        return self._con_nombre_instructor(competencia)
+
+    def quitar_archivo(self, id_competencia: int):
+        competencia = self.obtener_competencia_por_id(id_competencia)
+        url_vieja = competencia.archivo_url
+        competencia.archivo_url = None
+        competencia.archivo_nombre = None
+        self.db.commit()
+        self.db.refresh(competencia)
+        if url_vieja:
+            borrar_adjunto(url_vieja)
+        return self._con_nombre_instructor(competencia)
 
     def obtener_competencias_por_aprendiz(self, aprendiz: Usuario):
         """
@@ -58,8 +92,11 @@ class CompetenciaService:
 
     def eliminar_competencia(self, id_competencia: int):
         competencia = self.obtener_competencia_por_id(id_competencia)
+        url_vieja = competencia.archivo_url
         self.db.delete(competencia)
         self.db.commit()
+        if url_vieja:
+            borrar_adjunto(url_vieja)  # no dejar el documento huérfano en disco
         return {"mensaje": "Competencia eliminada correctamente."}
 
     @staticmethod

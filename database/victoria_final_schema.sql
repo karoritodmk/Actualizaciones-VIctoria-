@@ -1,43 +1,3 @@
--- ============================================================================
---  VICTORIA-FINAL -- Script único de base de datos (PostgreSQL)
--- ============================================================================
---  Este es el ÚNICO script de base de datos del proyecto. Reemplaza a los
---  tres que traía cada carpeta por separado (victoria-admin-completo,
---  coordinación e instructor) y refleja EXACTAMENTE los modelos de
---  SQLAlchemy en backend/models/ -- ambos deben mantenerse sincronizados
---  a mano si el esquema cambia en el futuro.
---
---  Los mismos modelos ya son capaces de crear este esquema solos, al
---  arrancar la API, con Base.metadata.create_all(bind=engine) (ver
---  backend/main.py). Este archivo existe para:
---    1) Crear la base de datos de un vistazo, sin tener que levantar la
---       API primero (útil para revisarla en pgAdmin/DBeaver o para un
---       entorno donde otra persona solo necesita la base de datos).
---    2) Documentar el modelo de datos completo en un solo lugar legible.
---    3) Sembrar los 3 roles base, sin los que la API no deja iniciar
---       sesión ni registrar usuarios.
---
---  Solo hay 3 roles en todo el sistema: coordinador (fusiona lo que antes
---  eran los roles separados "administrador" y "coordinador"), instructor
---  y aprendiz.
---
---  Cómo usarlo:
---      createdb victoria
---      psql -d victoria -f victoria_final_schema.sql
---
---  Después, para crear el primer coordinador (no lo hace este script, a
---  propósito: la contraseña debe quedar hasheada con el mismo algoritmo
---  que usa la API, no en texto plano), corre desde backend/:
---      python seed_roles.py
--- ============================================================================
-
-
--- ============================================================================
--- 1. TABLAS SIN DEPENDENCIAS (se crean primero)
--- ============================================================================
-
--- Roles del sistema. Solo existen 3 filas válidas en producción: ver el
--- INSERT al final de este archivo.
 CREATE TABLE Rol (
     id_rol      SERIAL PRIMARY KEY,
     nombre_rol  VARCHAR(50) NOT NULL UNIQUE
@@ -180,12 +140,8 @@ CREATE TABLE Usuario (
     -- Nota libre que deja un instructor al registrar un aprendiz
     informacion_adicional VARCHAR(500)
 );
+ 
 
-
--- ============================================================================
--- 5. Se cierran las dos referencias circulares de Ficha, ahora que
---    Programa y Usuario ya existen.
--- ============================================================================
 ALTER TABLE Ficha
     ADD CONSTRAINT fk_ficha_programa
     FOREIGN KEY (id_programa) REFERENCES Programa(id_programa) ON DELETE SET NULL;
@@ -195,17 +151,7 @@ ALTER TABLE Ficha
     FOREIGN KEY (id_director) REFERENCES Usuario(id_usuario) ON DELETE SET NULL;
 
 
--- ============================================================================
--- 6. TAREA / ENTREGA -- ciclo de trabajo instructor <-> aprendiz
--- ============================================================================
--- Reemplaza y unifica lo que antes eran conceptos separados y
--- superpuestos entre las 3 carpetas originales (Evidencia +
--- ActividadCompetencia del admin; Entregable + Evidencia + Seguimiento del
--- fork de instructor). Una Tarea la crea un instructor para una
--- ficha+competencia puntual; cada aprendiz de esa ficha recibe
--- automáticamente una Entrega en estado 'pendiente' (la crea la API, ver
--- backend/services/instructor_service.py), donde luego sube su archivo y
--- el instructor la califica.
+
 CREATE TABLE Tarea (
     id_tarea        SERIAL PRIMARY KEY,
     titulo          VARCHAR(150) NOT NULL,
@@ -303,3 +249,10 @@ ALTER TABLE sede ALTER COLUMN telefono_atencion TYPE VARCHAR(200);
 ALTER TABLE sede ALTER COLUMN horario_atencion TYPE VARCHAR(300);
 
 ALTER TABLE programa ADD COLUMN IF NOT EXISTS id_sede INTEGER REFERENCES sede(id_sede) ON DELETE SET NULL;
+
+
+ALTER TABLE competencia ADD COLUMN IF NOT EXISTS archivo_url VARCHAR(300)
+ALTER TABLE competencia ADD COLUMN IF NOT EXISTS archivo_nombre VARCHAR(200)
+
+
+ALTER TABLE usuario ADD COLUMN IF NOT EXISTS estado_contrato VARCHAR(30)

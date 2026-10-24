@@ -1,5 +1,4 @@
-
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
@@ -8,6 +7,7 @@ from core.security import require_coordinador
 from db.database import get_db
 from models.usuario import Usuario
 from schemas.coordinador import (
+    AprendizDetalleResponse,
     CompetenciaDetalleResponse,
     DashboardCoordinadorResponse,
     InstructorDetalleResponse,
@@ -17,9 +17,20 @@ from schemas.coordinador import (
     ProgramaSedeCreate,
     ProgramaSedeResponse,
     ProgramaSedeUpdate,
+    ComentarioInstructorCreate,
+    ComentarioInstructorResponse,
+    ContratoInstructorUpdate,
+)
+from schemas.portafolio import (
+    ArchivoPortafolioResponse,
+    CarpetaAprendizResponse,
+    CarpetaPortafolio,
+    SubcarpetaPortafolio,
 )
 from schemas.sede import SedeResponse
+from schemas.tarea import PortafolioAprendizResponse
 from services.coordinador_service import CoordinadorService
+from services.portafolio_service import PortafolioService
 
 router = APIRouter()
 
@@ -114,6 +125,45 @@ def instructor_detalle(
 ):
     return CoordinadorService(db).obtener_instructor_detalle(id_instructor)
 
+# 1) En backend/routes/coordinador.py, dentro del import de schemas.coordinador, agrega:
+#     ComentarioInstructorCreate,
+#     ComentarioInstructorResponse,
+#     ContratoInstructorUpdate,
+# 2) PEGA estas rutas justo ANTES de @router.get("/instructores/{id_instructor}/portafolio"...):
+
+@router.put("/instructores/{id_instructor}/contrato", response_model=InstructorDetalleResponse)
+def actualizar_contrato_instructor(
+    id_instructor: int,
+    datos: ContratoInstructorUpdate,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    """Actualiza el tipo y el estado del contrato del instructor."""
+    return CoordinadorService(db).actualizar_contrato_instructor(id_instructor, datos)
+
+
+@router.get("/instructores/{id_instructor}/comentarios", response_model=list[ComentarioInstructorResponse])
+def comentarios_instructor(
+    id_instructor: int,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    return CoordinadorService(db).listar_comentarios_instructor(id_instructor)
+
+
+@router.post(
+    "/instructores/{id_instructor}/comentarios",
+    response_model=ComentarioInstructorResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def comentar_instructor(
+    id_instructor: int,
+    datos: ComentarioInstructorCreate,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    return CoordinadorService(db).crear_comentario_instructor(id_instructor, datos.texto, usuario_actual)
+
 
 @router.get("/instructores/{id_instructor}/portafolio", response_model=PortafolioInstructorResponse)
 def portafolio_instructor(
@@ -122,6 +172,20 @@ def portafolio_instructor(
     usuario_actual: Usuario = Depends(require_coordinador),
 ):
     return CoordinadorService(db).obtener_portafolio_instructor(id_instructor)
+
+
+@router.get(
+    "/fichas/{id_ficha}/aprendices/{id_aprendiz}/portafolio",
+    response_model=PortafolioAprendizResponse,
+)
+def portafolio_aprendiz(
+    id_ficha: int,
+    id_aprendiz: int,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    """Portafolio de un aprendiz (todas las materias de la ficha), solo lectura."""
+    return CoordinadorService(db).obtener_portafolio_aprendiz(id_ficha, id_aprendiz)
 
 
 @router.get(
@@ -136,3 +200,102 @@ def competencia_detalle(
     usuario_actual: Usuario = Depends(require_coordinador),
 ):
     return CoordinadorService(db).obtener_competencia_detalle(id_instructor, trimestre, id_competencia)
+
+
+# ==========================================================================
+# Aprendices: perfil y portafolio (solo lectura para el coordinador)
+# Mismas respuestas que /api/portafolio, pero para el aprendiz que se indica.
+# ==========================================================================
+@router.get("/aprendices/{id_aprendiz}", response_model=AprendizDetalleResponse)
+def aprendiz_detalle(
+    id_aprendiz: int,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    return CoordinadorService(db).obtener_aprendiz_detalle(id_aprendiz)
+
+
+@router.get("/aprendices/{id_aprendiz}/portafolio/carpetas", response_model=List[CarpetaPortafolio])
+def aprendiz_portafolio_carpetas(
+    id_aprendiz: int,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    aprendiz = CoordinadorService(db).obtener_aprendiz_o_404(id_aprendiz)
+    return PortafolioService(db).obtener_carpetas(aprendiz)
+
+
+@router.get(
+    "/aprendices/{id_aprendiz}/portafolio/carpetas/{categoria}/subcarpetas",
+    response_model=List[SubcarpetaPortafolio],
+)
+def aprendiz_portafolio_subcarpetas(
+    id_aprendiz: int,
+    categoria: str,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    aprendiz = CoordinadorService(db).obtener_aprendiz_o_404(id_aprendiz)
+    return PortafolioService(db).obtener_subcarpetas(categoria, aprendiz)
+
+
+@router.get(
+    "/aprendices/{id_aprendiz}/portafolio/carpetas/{categoria}/subcarpetas/{subcarpeta}/archivos",
+    response_model=List[ArchivoPortafolioResponse],
+)
+def aprendiz_portafolio_archivos_subcarpeta(
+    id_aprendiz: int,
+    categoria: str,
+    subcarpeta: str,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    aprendiz = CoordinadorService(db).obtener_aprendiz_o_404(id_aprendiz)
+    return PortafolioService(db).obtener_archivos_de_subcarpeta(categoria, subcarpeta, aprendiz)
+
+
+@router.get(
+    "/aprendices/{id_aprendiz}/portafolio/carpetas/{categoria}/subcarpetas/{subcarpeta}/carpetas",
+    response_model=List[CarpetaAprendizResponse],
+)
+def aprendiz_portafolio_carpetas_subcarpeta(
+    id_aprendiz: int,
+    categoria: str,
+    subcarpeta: str,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    aprendiz = CoordinadorService(db).obtener_aprendiz_o_404(id_aprendiz)
+    return PortafolioService(db).obtener_carpetas_de_subcarpeta(categoria, subcarpeta, aprendiz)
+
+
+@router.get(
+    "/aprendices/{id_aprendiz}/portafolio/carpetas/{categoria}/subcarpetas/{subcarpeta}/carpetas/{id_carpeta}",
+    response_model=CarpetaAprendizResponse,
+)
+def aprendiz_portafolio_detalle_carpeta(
+    id_aprendiz: int,
+    categoria: str,
+    subcarpeta: str,
+    id_carpeta: int,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    aprendiz = CoordinadorService(db).obtener_aprendiz_o_404(id_aprendiz)
+    return PortafolioService(db).obtener_detalle_carpeta(categoria, subcarpeta, id_carpeta, aprendiz)
+
+
+@router.get(
+    "/aprendices/{id_aprendiz}/portafolio/carpetas/{categoria}/subcarpetas/{subcarpeta}/carpetas/{id_carpeta}/archivos",
+    response_model=List[ArchivoPortafolioResponse],
+)
+def aprendiz_portafolio_archivos_carpeta(
+    id_aprendiz: int,
+    categoria: str,
+    subcarpeta: str,
+    id_carpeta: int,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(require_coordinador),
+):
+    aprendiz = CoordinadorService(db).obtener_aprendiz_o_404(id_aprendiz)
+    return PortafolioService(db).obtener_archivos_de_carpeta(categoria, subcarpeta, id_carpeta, aprendiz)

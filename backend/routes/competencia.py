@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List
@@ -28,8 +28,8 @@ def crear_competencia(data: CompetenciaCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=List[CompetenciaResponse])
-def listar_competencias(db: Session = Depends(get_db), usuario_actual: Usuario = Depends(get_current_active_user)):
-    return CompetenciaService(db).obtener_competencias()
+def listar_competencias(id_programa: int | None = None, db: Session = Depends(get_db), usuario_actual: Usuario = Depends(get_current_active_user)):
+    return CompetenciaService(db).obtener_competencias(id_programa)
 
 
 @router.put("/{id_competencia}", response_model=CompetenciaResponse, dependencies=[Depends(require_gestion_competencia)])
@@ -45,3 +45,12 @@ def eliminar_competencia(id_competencia: int, db: Session = Depends(get_db)):
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="No se puede eliminar: todavía hay un programa que apunta a esta competencia.")
+
+@router.post("/{id_competencia}/archivo", response_model=CompetenciaResponse, dependencies=[Depends(require_gestion_competencia)])
+async def subir_archivo_competencia(id_competencia: int, archivo: UploadFile = File(...), db: Session = Depends(get_db)):
+    return await CompetenciaService(db).adjuntar_archivo(id_competencia, archivo)
+
+
+@router.delete("/{id_competencia}/archivo", response_model=CompetenciaResponse, dependencies=[Depends(require_gestion_competencia)])
+def quitar_archivo_competencia(id_competencia: int, db: Session = Depends(get_db)):
+    return CompetenciaService(db).quitar_archivo(id_competencia)

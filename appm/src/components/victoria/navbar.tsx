@@ -83,6 +83,20 @@ const TABS_COORDINADOR: Tab[] = [
     match: '/coordinador/sedes',
   },
   {
+    href: '/victoria/coordinador/fichas',
+    label: 'Fichas SENA',
+    icon: 'copy-outline',
+    match: '/coordinador/fichas',
+  },
+
+  {
+    href: '/victoria/coordinador/instructores',
+    label: 'Instructores',
+    icon: 'people-outline',
+    match: '/coordinador/instructores',
+  },
+
+  {
     // Todo lo que antes vivía en app/admin/* (fichas, programas,
     // competencias, instructores, coordinaciones académicas, sedes
     // físicas) -- ver app/victoria/coordinador/gestion/index.tsx.

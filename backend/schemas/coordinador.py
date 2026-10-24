@@ -44,6 +44,7 @@ class InstructorResumenResponse(BaseModel):
 class InstructorDetalleResponse(InstructorResumenResponse):
     especialidad: Optional[str] = None
     tipo_contrato: Optional[str] = None
+    estado_contrato: Optional[str] = None
     vigencia_contrato: Optional[date] = None
     numero_ficha: Optional[str] = None
     horario_ficha: Optional[str] = None
@@ -163,3 +164,104 @@ class ProgramaFichasResponse(BaseModel):
     nombre: str
     nivel_formacion: Optional[str] = None
     fichas: List[FichaProgramaResponse] = []
+
+
+# PEGAR AL FINAL de backend/schemas/coordinador.py
+# Además, en la clase InstructorDetalleResponse agrega, debajo de tipo_contrato:
+#     estado_contrato: Optional[str] = None
+
+# ==========================================================================
+# Contrato y comentarios del instructor (perfil que consulta el coordinador)
+# ==========================================================================
+TIPOS_CONTRATO = ("Planta", "Contratista", "Otro")
+ESTADOS_CONTRATO = ("Vigente", "No Vigente", "En estudio")
+
+
+class ContratoInstructorUpdate(BaseModel):
+    """None (o "Sin asignar") deja el campo sin asignar."""
+
+    tipo_contrato: Optional[str] = None
+    estado_contrato: Optional[str] = None
+
+    @field_validator("tipo_contrato", "estado_contrato", mode="before")
+    @classmethod
+    def _vacio_es_none(cls, v):
+        if v is None:
+            return None
+        v = str(v).strip()
+        return None if v == "" or v.lower() == "sin asignar" else v
+
+    @field_validator("tipo_contrato")
+    @classmethod
+    def _tipo_valido(cls, v):
+        if v is not None and v not in TIPOS_CONTRATO:
+            raise ValueError("Tipo de contrato no válido. Opciones: " + ", ".join(TIPOS_CONTRATO))
+        return v
+
+    @field_validator("estado_contrato")
+    @classmethod
+    def _estado_valido(cls, v):
+        if v is not None and v not in ESTADOS_CONTRATO:
+            raise ValueError("Estado de contrato no válido. Opciones: " + ", ".join(ESTADOS_CONTRATO))
+        return v
+
+
+class ComentarioInstructorCreate(BaseModel):
+    texto: str = Field(..., max_length=1000)
+
+    @field_validator("texto")
+    @classmethod
+    def _texto_no_vacio(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("El comentario no puede estar vacío.")
+        return v
+
+
+class ComentarioInstructorResponse(BaseModel):
+    id_comentario: int
+    texto: str
+    fecha_creacion: datetime
+    id_autor: Optional[int] = None
+    nombre_autor: str
+
+
+# ==========================================================================
+# Perfil de un aprendiz (vista del coordinador)
+# ==========================================================================
+class AprendizDetalleResponse(BaseModel):
+    """Todo lo que el sistema sabe de un aprendiz, ya "aplanado" desde
+    usuario -> ficha -> programa para que la pantalla de perfil no tenga que
+    hacer varias consultas. Nunca incluye la contraseña ni datos de seguridad
+    del login (intentos fallidos, códigos de recuperación)."""
+    id_usuario: int
+    nombre: str
+    apellido: Optional[str] = None
+    nombre_completo: str
+    estado: Optional[str] = None
+    tipo_documento: str
+    numero_documento: str
+    fecha_nacimiento: date
+    telefono: Optional[str] = None
+    correo_personal: str
+    correo_sena: str
+    fecha_registro: Optional[datetime] = None
+    informacion_adicional: Optional[str] = None
+    hoja_vida_url: Optional[str] = None
+
+    # Ficha (None si el aprendiz aún no tiene ficha asignada)
+    id_ficha: Optional[int] = None
+    estado_ficha: Optional[str] = None
+    trimestre: Optional[str] = None
+    horario_ficha: Optional[str] = None
+    jornada: Optional[str] = None
+    fecha_inicio_ficha: Optional[datetime] = None
+    fecha_fin_ficha: Optional[datetime] = None
+    director_ficha: Optional[str] = None
+
+    # Programa de la ficha
+    programa_nombre: Optional[str] = None
+    nivel_formacion: Optional[str] = None
+
+    # Cuántos archivos ha subido a su portafolio (en total)
+    total_archivos_portafolio: int = 0

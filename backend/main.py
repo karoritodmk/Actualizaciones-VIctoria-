@@ -20,6 +20,7 @@ from routes.sede import router as sede_router
 from routes.notificaciones import router as notificaciones_router
 from routes.coordinador import router as coordinador_router
 from routes.instructor import router as instructor_router
+from routes.portafolio_instructor import router as portafolio_instructor_router
 from api.v1 import auth
 from routes import tarea
 from models.archivo_tarea import ArchivoTarea
@@ -118,6 +119,9 @@ app.include_router(notificaciones_router, prefix="/api/notificaciones", tags=["N
 # --- Exclusivas de un rol ---
 app.include_router(coordinador_router, prefix="/api/coordinador", tags=["Coordinador"])
 app.include_router(instructor_router, prefix="/api/instructor", tags=["Instructor"])
+app.include_router(
+    portafolio_instructor_router, prefix="/api/portafolio-instructor", tags=["Portafolio instructor"]
+)
 
 # --- Autenticación (pública + /me) ---
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])

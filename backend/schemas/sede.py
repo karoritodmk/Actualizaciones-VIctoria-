@@ -22,6 +22,8 @@ class SedeCreate(SedeBase):
 
 class SedeResponse(SedeBase):
     id_sede: int
+    archivo_url: Optional[str] = None
+    archivo_nombre: Optional[str] = None
 
     class Config:
         from_attributes = True

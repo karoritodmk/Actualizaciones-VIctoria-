@@ -17,6 +17,7 @@ export type Usuario = {
   correo_sena: string;
   id_ficha: number | null;
   id_coordinacion: number | null;
+  tipo_instructor?: string | null;
   fecha_creacion: string;
 };
 

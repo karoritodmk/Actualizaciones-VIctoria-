@@ -10,6 +10,7 @@ import {
   DashboardCoordinador,
   obtenerDashboardCoordinador,
 } from '@/lib/coordinador';
+import { obtenerProgramas, type Programa } from '@/lib/programas';
 import { useRoleGuard } from '@/lib/role-guard';
 import { styles } from './dashboard.styles';
 
@@ -25,7 +26,7 @@ function textoPendiente(n: number, conPendientes: string, sinPendientes: string)
 
 /**
  * Dashboard exclusivo del rol coordinador. Vista GENERAL del sistema:
- * tres tarjetas tocables (Fichas, Instructores, Aprendices) con su total y
+ * tres tarjetas tocables (Fichas, Instructores, Programas) con su total y
  * el pendiente más importante de cada una, y la lista "Fichas recientes".
  * Mismo patrón que victoria/instructor/dashboard.tsx: useRoleGuard bloquea
  * la pantalla a quien no sea coordinador, y GET /api/coordinador/dashboard
@@ -34,6 +35,7 @@ function textoPendiente(n: number, conPendientes: string, sinPendientes: string)
 export default function CoordinadorDashboardScreen() {
   const perfil = useRoleGuard(['coordinador']);
   const [datos, setDatos] = useState<DashboardCoordinador | null>(null);
+  const [programas, setProgramas] = useState<Programa[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
@@ -49,6 +51,11 @@ export default function CoordinadorDashboardScreen() {
         setError(err instanceof CoordinadorApiError ? err.message : 'No se pudo cargar el dashboard.')
       )
       .finally(() => setCargando(false));
+    // Los programas se piden aparte (GET /api/programas): así la tarjeta no
+    // depende de que el backend del dashboard ya traiga ese dato.
+    obtenerProgramas()
+      .then(setProgramas)
+      .catch(() => setProgramas(null));
   }, [perfil]);
 
   useFocusEffect(cargar);
@@ -92,11 +99,23 @@ export default function CoordinadorDashboardScreen() {
               onPress={() => router.push('/victoria/coordinador/gestion/instructores' as never)}
             />
             <DataCard
-              icon="people-outline"
-              title={`${datos.total_aprendices} ${plural(datos.total_aprendices, 'aprendiz', 'aprendices')}`}
-              subtitle={`Matriculados\n${textoPendiente(datos.aprendices_sin_ficha, 'sin ficha', 'Todos con ficha')}`}
+              icon="school-outline"
+              title={
+                programas
+                  ? `${programas.length} ${plural(programas.length, 'programa', 'programas')}`
+                  : 'Programas'
+              }
+              subtitle={
+                programas
+                  ? `Programas de formación\n${textoPendiente(
+                      programas.filter((p) => p.id_sede == null).length,
+                      'sin sede asignada',
+                      'Todos con sede'
+                    )}`
+                  : 'Programas de formación'
+              }
               style={styles.card}
-              onPress={() => router.push('/victoria/coordinador/gestion/fichas' as never)}
+              onPress={() => router.push('/victoria/coordinador/gestion/programas' as never)}
             />
           </View>
 

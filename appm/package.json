@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo/ui": "~58.0.9",
     "@expo/vector-icons": "~15.0.0",
+    "docx-preview": "^0.4.1",
     "expo": "^58",
     "expo-blur": "~58.0.2",
     "expo-constants": "~58.0.9",

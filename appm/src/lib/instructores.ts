@@ -13,7 +13,8 @@ export type InstructorManualInput = {
   correo_personal: string;
   correo_sena: string;
   contrasena: string;
-  id_coordinacion: number;
+  id_coordinacion?: number;
+  tipo_instructor?: 'planta' | 'tecnico' | 'transversal';
 };
 
 async function authHeaders(json = true): Promise<Record<string, string>> {

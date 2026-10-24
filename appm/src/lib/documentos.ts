@@ -5,11 +5,8 @@ import { mensajeDeRespuesta } from '@/lib/api-error';
 import { API_BASE_URL } from '@/lib/api-config';
 import { getToken } from '@/lib/auth';
 
-/**
- * Documentos (PDF / Word) de sedes y programas: elegir, validar, subir y abrir.
- * El backend vuelve a validar todo (extensión, contenido real y 15 MB); esta
- * validación es para avisar al instante, sin esperar a la subida.
- */
+
+
 export const EXTENSIONES_DOCUMENTO = ['.pdf', '.doc', '.docx'];
 export const MENSAJE_SOLO_DOCUMENTOS = 'Solo se permiten archivos PDF o Word (.pdf, .doc, .docx).';
 export const TAMANO_MAXIMO_BYTES = 15 * 1024 * 1024;
@@ -28,8 +25,14 @@ function extensionDe(nombre: string): string {
   return i >= 0 ? n.slice(i) : '';
 }
 
-export function tipoDeDocumento(nombre: string | null | undefined): 'PDF' | 'Word' {
-  return extensionDe(nombre ?? '') === '.pdf' ? 'PDF' : 'Word';
+export function tipoDeDocumento(nombre: string | null | undefined): string {
+  const ext = extensionDe(nombre ?? '');
+  if (ext === '.pdf') return 'PDF';
+  if (['.xls', '.xlsx'].includes(ext)) return 'Excel';
+  if (['.ppt', '.pptx'].includes(ext)) return 'PowerPoint';
+  if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) return 'Imagen';
+  if (ext === '.zip') return 'ZIP';
+  return 'Word';
 }
 
 export function formatearTamano(bytes?: number | null): string {
@@ -115,4 +118,39 @@ export async function subirDocumento<T>(
   const datos = await respuesta.json().catch(() => ({}));
   if (!respuesta.ok) throw new Error(mensajeDeRespuesta(respuesta.status, datos.detail, fallback));
   return datos as T;
+}
+
+/**
+ * Archivo informativo de una sede: además de PDF/Word admite Excel, PowerPoint,
+ * imágenes y ZIP (la misma lista que acepta el backend en core/uploads.py).
+ */
+export const EXTENSIONES_ARCHIVO_SEDE = [
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.webp', '.zip',
+];
+export const MENSAJE_ARCHIVO_SEDE =
+  'Formatos permitidos: PDF, Word, Excel, PowerPoint, imágenes (PNG/JPG/WEBP) o ZIP. Máximo 15 MB.';
+
+export function validarArchivoSede(asset: DocumentoElegido): string | null {
+  if (!EXTENSIONES_ARCHIVO_SEDE.includes(extensionDe(asset.name ?? ''))) {
+    return `"${asset.name}" no es un formato permitido. ${MENSAJE_ARCHIVO_SEDE}`;
+  }
+  if (asset.size === 0) return `"${asset.name}" está vacío.`;
+  if (asset.size != null && asset.size > TAMANO_MAXIMO_BYTES) {
+    return `"${asset.name}" pesa ${formatearTamano(asset.size)} y el máximo es 15 MB.`;
+  }
+  return null;
+}
+
+/** Selector sin filtro de tipo (así se puede elegir cualquier archivo); valida después. */
+export async function elegirArchivoSede(): Promise<DocumentoElegido | null> {
+  const resultado = await DocumentPicker.getDocumentAsync({
+    type: '*/*',
+    multiple: false,
+    copyToCacheDirectory: true,
+  });
+  if (resultado.canceled || !resultado.assets?.length) return null;
+  const asset = resultado.assets[0];
+  const problema = validarArchivoSede(asset);
+  if (problema) throw new Error(problema);
+  return asset;
 }

@@ -34,6 +34,8 @@ class CompetenciaResponse(CompetenciaBase):
     # de la relación), para que el frontend no tenga que hacer un
     # segundo fetch para mostrar "- Sandra profe".
     nombre_instructor: Optional[str] = None
+    archivo_url: Optional[str] = None
+    archivo_nombre: Optional[str] = None
 
     class Config:
         from_attributes = True

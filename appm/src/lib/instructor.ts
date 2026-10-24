@@ -288,12 +288,33 @@ export function obtenerAprendices(idFicha: number): Promise<AprendizResumen[]> {
   return fetchInstructor(`/fichas/${idFicha}/aprendices`);
 }
 
+/**
+ * El backend (schemas/tarea.py::PortafolioAprendizResponse) responde con
+ * id_usuario / nombre_completo / nombre_competencia, pero las pantallas usan
+ * id_aprendiz / nombre_aprendiz / nombre. Se traduce aquí, una sola vez, para
+ * que el instructor y el coordinador compartan el mismo tipo. Acepta ambas formas.
+ */
+export function normalizarPortafolioAprendiz(raw: any): PortafolioAprendiz {
+  return {
+    id_ficha: raw.id_ficha,
+    numero_ficha: raw.numero_ficha ?? null,
+    id_aprendiz: raw.id_aprendiz ?? raw.id_usuario,
+    nombre_aprendiz: raw.nombre_aprendiz ?? raw.nombre_completo ?? '',
+    competencias: (raw.competencias ?? []).map((c: any) => ({
+      id_competencia: c.id_competencia,
+      nombre: c.nombre ?? c.nombre_competencia ?? 'Materia',
+      actividades: c.actividades ?? [],
+    })),
+  };
+}
+
 /** Portafolio de un aprendiz puntual: Materia > Actividades > su entrega. */
-export function obtenerPortafolioAprendiz(
+export async function obtenerPortafolioAprendiz(
   idFicha: number,
   idAprendiz: number
 ): Promise<PortafolioAprendiz> {
-  return fetchInstructor(`/fichas/${idFicha}/aprendices/${idAprendiz}/portafolio`);
+  const raw = await fetchInstructor<unknown>(`/fichas/${idFicha}/aprendices/${idAprendiz}/portafolio`);
+  return normalizarPortafolioAprendiz(raw);
 }
 
 export function crearAprendiz(idFicha: number, data: NuevoAprendiz): Promise<AprendizCreado> {

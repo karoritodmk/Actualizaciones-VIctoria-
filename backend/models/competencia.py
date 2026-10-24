@@ -10,6 +10,8 @@ class Competencia(Base):
     descripcion = Column(String(300), nullable=True)
     trimestre = Column(String(2), nullable=False)
     fecha_carga = Column(DateTime, nullable=False)
+    archivo_url = Column(String(300), nullable=True)
+    archivo_nombre = Column(String(200), nullable=True)
 
 
 

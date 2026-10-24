@@ -13,7 +13,7 @@ from models.rol import Rol
 from schemas.usuario import UsuarioCreate, UsuarioUpdate, UsuarioResponse
 from services import usuario_service as services
 from core.security import get_current_active_user, require_coordinador, hash_password
-
+from services import usuario_service as services, carga_masiva_service
 router = APIRouter()
 
 
@@ -90,59 +90,10 @@ def generar_password_temporal(numero_documento: str) -> str:
 
 @router.post("/carga-masiva", tags=["Usuarios"])
 def cargar_aprendices_desde_archivo(
-    id_ficha: int = Form(...),
-    archivo: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    usuario_actual: Usuario = Depends(require_coordinador),
-):
-    """
-    Crea varios aprendices de una sola vez a partir de un archivo CSV.
-
-    Columnas esperadas (encabezado en la primera fila):
-    nombre,apellido,tipo_documento,numero_documento,fecha_nacimiento,
-    correo_personal,correo_sena,telefono
-
-    - fecha_nacimiento en formato AAAA-MM-DD.
-    - La contraseña inicial de cada aprendiz es una temporal generada a
-      partir de su documento (ver generar_password_temporal).
-    - id_ficha se elige en el formulario, no va dentro del CSV.
-    """
-    if not archivo.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser un .csv")
-
-    rol_aprendiz = db.query(Rol).filter(Rol.nombre_rol.ilike("aprendiz")).first()
-    if not rol_aprendiz:
-        raise HTTPException(
-            status_code=500,
-            detail="No existe el rol 'aprendiz'. Corre seed_roles.py primero.",
-        )
-
-    contenido = archivo.file.read().decode("utf-8-sig")
-    lector = csv.DictReader(io.StringIO(contenido))
-
-    creados, errores = [], []
-
-    for i, fila in enumerate(lector, start=2):  # la fila 1 es el encabezado
-        try:
-            nuevo = Usuario(
-                nombre=fila["nombre"].strip(),
-                apellido=(fila.get("apellido") or "").strip() or None,
-                id_rol=rol_aprendiz.id_rol,
-                estado="activo",
-                fecha_nacimiento=date.fromisoformat(fila["fecha_nacimiento"].strip()),
-                numero_documento=fila["numero_documento"].strip(),
-                tipo_documento=fila["tipo_documento"].strip(),
-                telefono=(fila.get("telefono") or "").strip() or None,
-                correo_personal=fila["correo_personal"].strip(),
-                correo_sena=fila["correo_sena"].strip(),
-                id_ficha=id_ficha,
-                contrasena=hash_password(generar_password_temporal(fila["numero_documento"].strip())),
-            )
-            db.add(nuevo)
-            db.commit()
-            creados.append(nuevo.numero_documento)
-        except Exception as e:
-            db.rollback()
-            errores.append({"fila": i, "error": str(e)})
-
-    return {"creados": creados, "errores": errores}
+       id_ficha: int = Form(...),
+       archivo: UploadFile = File(...),
+       db: Session = Depends(get_db),
+       usuario_actual: Usuario = Depends(require_coordinador),
+   ):
+       """Crea varios aprendices de una ficha desde un archivo .csv, .tsv, .txt o .xlsx."""
+       return carga_masiva_service.procesar_archivo(db, id_ficha, archivo)

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -13,6 +12,8 @@ import {
   View,
 } from 'react-native';
 
+import { ArchivoCard } from '@/components/victoria/archivo-card';
+import { HorarioEditor } from '@/components/victoria/horario-editor';
 import { VictoriaScreenShell } from '@/components/victoria/screen-shell';
 import { useVictoriaToast } from '@/components/victoria/toast';
 import { ExitButton, PaneHeader, PillButton, SearchPill } from '@/components/victoria/ui';
@@ -24,8 +25,15 @@ import {
   SedeDetalle,
   SedeResumen,
 } from '@/lib/coordinador';
+import { DocumentoElegido, elegirArchivoSede, MENSAJE_ARCHIVO_SEDE } from '@/lib/documentos';
 import { useRoleGuard } from '@/lib/role-guard';
-import { actualizarSede, crearSede, type SedeInput } from '@/lib/sedes';
+import {
+  actualizarSede,
+  crearSede,
+  quitarArchivoSede,
+  subirArchivoSede,
+  type SedeInput,
+} from '@/lib/sedes';
 import { styles } from './index.styles';
 
 /** Estado del formulario del modal "Administrar SEDE" / "Añadir SEDE". */
@@ -58,7 +66,7 @@ function opcional(texto: string): string | undefined {
 
 export default function CoordinadorSedesScreen() {
   const perfil = useRoleGuard(['coordinador']);
-  const { mostrarExito } = useVictoriaToast();
+  const { mostrarExito, mostrarError } = useVictoriaToast();
   const [sedes, setSedes] = useState<SedeResumen[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState('');
@@ -72,9 +80,15 @@ export default function CoordinadorSedesScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [idEditando, setIdEditando] = useState<number | null>(null);
   const [form, setForm] = useState<FormSede>(FORM_VACIO);
-  const [archivo, setArchivo] = useState<string | null>(null);
+  // Archivo elegido que se subirá al guardar (la sede puede tener además uno ya guardado).
+  const [archivoNuevo, setArchivoNuevo] = useState<DocumentoElegido | null>(null);
+  const [quitandoArchivo, setQuitandoArchivo] = useState(false);
+  const [horarioError, setHorarioError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [errorModal, setErrorModal] = useState<string | null>(null);
+  const [leyendoArchivo, setLeyendoArchivo] = useState(false);
+  const [exitoGuardado, setExitoGuardado] = useState(false);
+
 
   const cargar = useCallback(() => {
     if (!perfil) return;
@@ -119,14 +133,17 @@ export default function CoordinadorSedesScreen() {
   function abrirModalAnadir() {
     setIdEditando(null);
     setForm(FORM_VACIO);
-    setArchivo(null);
+    setArchivoNuevo(null);
+    setHorarioError(null);
     setErrorModal(null);
     setModalVisible(true);
   }
 
   async function abrirModalAdministrar(idSede: number) {
+    setExitoGuardado(false);
     setIdEditando(idSede);
-    setArchivo(null);
+    setArchivoNuevo(null);
+    setHorarioError(null);
     setErrorModal(null);
     const enCache = detalles[idSede];
     if (enCache) {
@@ -151,40 +168,41 @@ export default function CoordinadorSedesScreen() {
   }
 
   /**
-   * "Cargar archivo datos nuevos de la sede": lee un .json con las claves
-   * nombre, descripcion, direccion_principal, telefono_atencion y
-   * horario_atencion y rellena el formulario. NO guarda nada: el
-   * coordinador revisa y confirma con "Guardar cambios SEDE".
+   * "Cargar archivo con información adicional": elige un PDF, Word, Excel,
+   * etc. Se sube al guardar la sede y aparece en su tarjeta al desplegarla.
    */
-  async function cargarArchivo() {
+  async function elegirArchivo() {
     setErrorModal(null);
     try {
-      const resultado = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
-        copyToCacheDirectory: true,
-      });
-      if (resultado.canceled || !resultado.assets?.length) return;
-      const asset = resultado.assets[0];
-      const texto = await (await fetch(asset.uri)).text();
-      const datos = JSON.parse(texto);
-      setForm((prev) => ({
-        nombre: typeof datos.nombre === 'string' ? datos.nombre : prev.nombre,
-        descripcion: typeof datos.descripcion === 'string' ? datos.descripcion : prev.descripcion,
-        direccion:
-          typeof datos.direccion_principal === 'string' ? datos.direccion_principal : prev.direccion,
-        telefono:
-          typeof datos.telefono_atencion === 'string' ? datos.telefono_atencion : prev.telefono,
-        horario: typeof datos.horario_atencion === 'string' ? datos.horario_atencion : prev.horario,
-      }));
-      setArchivo(asset.name);
-    } catch {
-      setErrorModal('No se pudo leer el archivo. Debe ser un .json con los datos de la sede.');
+      const elegido = await elegirArchivoSede();
+      if (elegido) setArchivoNuevo(elegido);
+    } catch (err) {
+      setErrorModal(err instanceof Error ? err.message : 'No se pudo elegir el archivo.');
+    }
+  }
+
+  async function quitarArchivoActual() {
+    if (idEditando === null) return;
+    setQuitandoArchivo(true);
+    setErrorModal(null);
+    try {
+      const sede = await quitarArchivoSede(idEditando);
+      setDetalles((prev) => (prev[idEditando] ? { ...prev, [idEditando]: { ...prev[idEditando], ...sede } } : prev));
+      cargar();
+    } catch (err) {
+      setErrorModal(err instanceof Error ? err.message : 'No se pudo quitar el archivo.');
+    } finally {
+      setQuitandoArchivo(false);
     }
   }
 
   async function guardar() {
     if (!form.nombre.trim()) {
       setErrorModal('El nombre de la sede es obligatorio.');
+      return;
+    }
+    if (horarioError) {
+      setErrorModal(horarioError);
       return;
     }
     const datos: SedeInput = {
@@ -196,23 +214,46 @@ export default function CoordinadorSedesScreen() {
     };
     setGuardando(true);
     setErrorModal(null);
+    let idGuardada: number | null = null;
     try {
-      if (idEditando === null) {
-        await crearSede(datos);
-      } else {
-        await actualizarSede(idEditando, datos);
-        // El detalle cacheado quedó viejo: se descarta y se pide de nuevo al expandir.
-        setDetalles((prev) => {
-          const { [idEditando]: _viejo, ...resto } = prev;
-          return resto;
-        });
-        setExpandida((actual) => (actual === idEditando ? null : actual));
-      }
+      const guardada =
+        idEditando === null ? await crearSede(datos) : await actualizarSede(idEditando, datos);
+      idGuardada = guardada.id_sede;
+      if (archivoNuevo) await subirArchivoSede(guardada.id_sede, archivoNuevo);
+      // El detalle cacheado quedó viejo: se descarta y se pide de nuevo al expandir.
+      setDetalles((prev) => {
+        const { [guardada.id_sede]: _viejo, ...resto } = prev;
+        return resto;
+      });
+      setExpandida((actual) => (actual === guardada.id_sede ? null : actual));
+      setExitoGuardado(true);
+      await new Promise((r) => setTimeout(r, 900));
+      setExitoGuardado(false);
       cerrarModal();
       cargar();
-      mostrarExito(idEditando === null ? 'Sede creada con éxito' : 'Sede actualizada con éxito');
+      mostrarExito(
+        archivoNuevo
+          ? 'Sede guardada y archivo subido con éxito'
+          : idEditando === null
+            ? 'Sede creada con éxito'
+            : 'Sede actualizada con éxito'
+      );
     } catch (err: any) {
-      setErrorModal(err.message ?? 'No se pudo guardar la sede.');
+      setExitoGuardado(false);
+      if (idGuardada !== null) {
+        // La sede sí se guardó; solo falló el archivo. Se pasa a modo "Administrar"
+        // para que reintentar NO cree la sede dos veces.
+        const id = idGuardada;
+        setIdEditando(id);
+        setDetalles((prev) => {
+          const { [id]: _viejo, ...resto } = prev;
+          return resto;
+        });
+        cargar();
+        setErrorModal(`La sede se guardó, pero el archivo no se pudo subir: ${err.message}`);
+      } else {
+        setErrorModal(err.message ?? 'No se pudo guardar la sede.');
+      }
     } finally {
       setGuardando(false);
     }
@@ -226,6 +267,9 @@ export default function CoordinadorSedesScreen() {
     );
   }
   if (!perfil) return null;
+
+  const sedeEditada = idEditando !== null ? detalles[idEditando] : undefined;
+  const archivoActual = sedeEditada?.archivo_url ? sedeEditada : null;
 
   const filtradas = (sedes ?? []).filter((s) =>
     s.nombre.toLowerCase().includes(busqueda.trim().toLowerCase())
@@ -296,12 +340,29 @@ export default function CoordinadorSedesScreen() {
                         </Text>
                       ) : null}
                       {detalle?.horario_atencion ? (
-                        <Text style={styles.detailLine}>Horario de atención: {detalle.horario_atencion}</Text>
+                        <View>
+                          <Text style={styles.detailLine}>Horario de atención:</Text>
+                          {detalle.horario_atencion
+                            .split('\n')
+                            .filter((linea) => linea.trim())
+                            .map((linea, i) => (
+                              <Text key={i} style={[styles.detailLine, styles.detailIndent]}>
+                                • {linea}
+                              </Text>
+                            ))}
+                        </View>
+                      ) : null}
+                      {detalle?.archivo_url ? (
+                        <View style={styles.archivoBloque}>
+                          <Text style={styles.detailLine}>Información adicional:</Text>
+                          <ArchivoCard nombre={detalle.archivo_nombre} url={detalle.archivo_url} />
+                        </View>
                       ) : null}
                       {detalle &&
                       !detalle.direccion_principal &&
                       !detalle.telefono_atencion &&
-                      !detalle.horario_atencion ? (
+                      !detalle.horario_atencion &&
+                      !detalle.archivo_url ? (
                         <Text style={styles.detailLine}>
                           Esta sede aún no tiene datos de contacto registrados.
                         </Text>
@@ -397,33 +458,84 @@ export default function CoordinadorSedesScreen() {
                 placeholderTextColor="#6b7d70"
                 style={styles.inputPill}
               />
-              <TextInput
+              <HorarioEditor
+                key={idEditando ?? 'nueva'}
                 value={form.horario}
-                onChangeText={(t) => setForm((f) => ({ ...f, horario: t }))}
-                placeholder="Horario de atención"
-                placeholderTextColor="#6b7d70"
-                style={styles.inputPill}
+                onChange={(t) => setForm((f) => ({ ...f, horario: t }))}
+                onErrorChange={setHorarioError}
               />
 
-              <Pressable style={styles.uploadBox} onPress={cargarArchivo} accessibilityRole="button">
-                <Ionicons name="cloud-upload-outline" size={26} color="#6b7d70" />
-                <Text style={styles.uploadText}>
-                  {archivo ?? 'Cargar archivo datos nuevos de la sede'}
+              {archivoActual ? (
+                <View style={styles.archivoModal}>
+                  <ArchivoCard
+                    nombre={archivoActual.archivo_nombre}
+                    url={archivoActual.archivo_url}
+                    onQuitar={quitarArchivoActual}
+                    quitando={quitandoArchivo}
+                  />
+                  {archivoNuevo ? (
+                    <Text style={styles.uploadHint}>El archivo nuevo reemplazará a este al guardar.</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+
+
+              <Pressable
+                style={[styles.uploadBox, archivoNuevo && styles.uploadBoxListo]}
+                onPress={elegirArchivo}
+                disabled={guardando}
+                accessibilityRole="button">
+                {archivoNuevo ? (
+                  <Ionicons name="checkmark-circle" size={28} color="#2e7d43" />
+                ) : (
+                  <Ionicons name="cloud-upload-outline" size={26} color="#6b7d70" />
+                )}
+                <Text style={[styles.uploadText, archivoNuevo && styles.uploadTextListo]} numberOfLines={2}>
+                  {archivoNuevo
+                    ? archivoNuevo.name
+                    : archivoActual
+                      ? 'Reemplazar archivo de información adicional'
+                      : 'Cargar archivo con información adicional de la sede'}
+                </Text>
+                <Text style={styles.uploadHint}>
+                    {archivoNuevo
+                      ? guardando
+                        ? 'Subiendo archivo...'
+                        : 'Archivo listo: se sube al guardar · toca para cambiarlo'
+                      : MENSAJE_ARCHIVO_SEDE}
                 </Text>
               </Pressable>
 
               <Pressable
-                style={[styles.saveButton, guardando && styles.saveButtonDisabled]}
-                onPress={guardar}
-                disabled={guardando}>
-                <Text style={styles.saveButtonText}>
-                  {guardando
-                    ? 'Guardando...'
-                    : idEditando === null
-                      ? 'Crear SEDE'
-                      : 'Guardar cambios SEDE'}
-                </Text>
+                  style={[
+                    styles.saveButton,
+                    exitoGuardado && styles.saveButtonSuccess,
+                    guardando && !exitoGuardado && styles.saveButtonDisabled,
+                  ]}
+                  onPress={guardar}
+                  disabled={guardando || exitoGuardado}>
+                  {exitoGuardado ? (
+                    <View style={styles.saveButtonRow}>
+                      <Ionicons name="checkmark-circle" size={20} color={VictoriaColors.white} />
+                      <Text style={styles.saveButtonText}>
+                        {idEditando === null ? '¡Sede creada!' : '¡Cambios guardados!'}
+                      </Text>
+                    </View>
+                  ) : guardando ? (
+                    <View style={styles.saveButtonRow}>
+                        <ActivityIndicator color={VictoriaColors.white} size="small" />
+                        <Text style={styles.saveButtonText}>
+                          {archivoNuevo ? 'Guardando y subiendo archivo...' : 'Guardando...'}
+                        </Text>
+                    </View>
+                    ) : (
+                      <Text style={styles.saveButtonText}>
+                        {idEditando === null ? 'Crear SEDE' : 'Guardar cambios SEDE'}
+                      </Text>
+                  )}
               </Pressable>
+
             </ScrollView>
           </Pressable>
         </Pressable>

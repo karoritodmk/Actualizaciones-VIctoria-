@@ -3,10 +3,13 @@ from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-
+from models.comentario_instructor import ComentarioInstructor
+from schemas.coordinador import ContratoInstructorUpdate, ProgramaSedeCreate, ProgramaSedeUpdate
 from models.asignacion_instructor import AsignacionInstructor
 from models.competencia import Competencia
 from models.coordinacion import Coordinacion
+from models.archivo_portafolio import ArchivoPortafolio
+from models.entrega import Entrega
 from models.ficha import Ficha
 from models.programa import Programa
 from models.rol import Rol
@@ -14,6 +17,7 @@ from models.sede import Sede
 from models.tarea import Tarea
 from models.usuario import Usuario
 from schemas.coordinador import ProgramaSedeCreate, ProgramaSedeUpdate
+
 
 NOMBRE_ROL_INSTRUCTOR = "instructor"
 NOMBRE_ROL_APRENDIZ = "aprendiz"
@@ -178,6 +182,7 @@ class CoordinadorService:
             **self._armar_instructor_resumen(instructor),
             "especialidad": instructor.especialidad,
             "tipo_contrato": instructor.tipo_contrato,
+            "estado_contrato": instructor.estado_contrato,
             "vigencia_contrato": instructor.vigencia_contrato,
             "numero_ficha": str(ficha.id_ficha) if ficha else None,
             "horario_ficha": ficha.horario if ficha else None,
@@ -185,6 +190,64 @@ class CoordinadorService:
             "telefono": instructor.telefono,
             "hoja_vida_url": instructor.hoja_vida_url,
         }
+
+
+
+    # 1) En backend/services/coordinador_service.py, junto a los otros imports, agrega:
+#     from models.comentario_instructor import ComentarioInstructor
+#    y cambia el import de schemas.coordinador por:
+#     from schemas.coordinador import ContratoInstructorUpdate, ProgramaSedeCreate, ProgramaSedeUpdate
+# 2) En obtener_instructor_detalle, dentro del diccionario que devuelve, debajo de
+#     "tipo_contrato": instructor.tipo_contrato,   agrega:
+#     "estado_contrato": instructor.estado_contrato,
+# 3) PEGA estos métodos DENTRO de la clase CoordinadorService (por ejemplo, justo antes
+#    del método obtener_portafolio_instructor), respetando la sangría de 4 espacios:
+
+    # ------------------------------------------------------------
+    # 3b. Contrato y comentarios del instructor
+    # ------------------------------------------------------------
+    def actualizar_contrato_instructor(self, id_instructor: int, datos: ContratoInstructorUpdate) -> dict:
+        instructor = self._obtener_instructor_o_404(id_instructor)
+        # Solo se tocan los campos que llegaron en la petición: así un valor
+        # antiguo escrito a mano en el otro campo no estorba ni se borra.
+        if "tipo_contrato" in datos.model_fields_set:
+            instructor.tipo_contrato = datos.tipo_contrato
+        if "estado_contrato" in datos.model_fields_set:
+            instructor.estado_contrato = datos.estado_contrato
+        self.db.commit()
+        self.db.refresh(instructor)
+        return self.obtener_instructor_detalle(id_instructor)
+
+    @staticmethod
+    def _armar_comentario(comentario: ComentarioInstructor, autor: Optional[Usuario]) -> dict:
+        nombre = f"{autor.nombre} {autor.apellido or ''}".strip() if autor else "Usuario eliminado"
+        return {
+            "id_comentario": comentario.id_comentario,
+            "texto": comentario.texto,
+            "fecha_creacion": comentario.fecha_creacion,
+            "id_autor": comentario.id_autor,
+            "nombre_autor": nombre,
+        }
+
+    def listar_comentarios_instructor(self, id_instructor: int) -> list[dict]:
+        self._obtener_instructor_o_404(id_instructor)
+        filas = (
+            self.db.query(ComentarioInstructor, Usuario)
+            .outerjoin(Usuario, Usuario.id_usuario == ComentarioInstructor.id_autor)
+            .filter(ComentarioInstructor.id_instructor == id_instructor)
+            .order_by(ComentarioInstructor.fecha_creacion.desc(), ComentarioInstructor.id_comentario.desc())
+            .all()
+        )
+        return [self._armar_comentario(c, u) for c, u in filas]
+
+    def crear_comentario_instructor(self, id_instructor: int, texto: str, autor: Usuario) -> dict:
+        self._obtener_instructor_o_404(id_instructor)
+        comentario = ComentarioInstructor(id_instructor=id_instructor, id_autor=autor.id_usuario, texto=texto)
+        self.db.add(comentario)
+        self.db.commit()
+        self.db.refresh(comentario)
+        return self._armar_comentario(comentario, autor)
+    
 
     # ------------------------------------------------------------
     # 4. Portafolio de un instructor (solo lectura)
@@ -252,6 +315,97 @@ class CoordinadorService:
             "trimestres": trimestres_out,
         }
 
+    # ------------------------------------------------------------------
+    # Portafolio de UN aprendiz visto por el coordinador (solo lectura).
+    # A diferencia de InstructorService.obtener_portafolio_aprendiz (que
+    # solo muestra las materias/actividades del instructor que consulta),
+    # aquí se ven TODAS las materias de la ficha y las actividades de
+    # cualquier instructor, con la entrega de ESE aprendiz en cada una.
+    # ------------------------------------------------------------------
+    def obtener_portafolio_aprendiz(self, id_ficha: int, id_aprendiz: int) -> dict:
+        from services.instructor_service import _tipo_archivo
+
+        ficha = self.db.query(Ficha).filter(Ficha.id_ficha == id_ficha).first()
+        if not ficha:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ficha no encontrada.")
+
+        aprendiz = (
+            self.db.query(Usuario)
+            .join(Rol, Usuario.id_rol == Rol.id_rol)
+            .filter(
+                Usuario.id_usuario == id_aprendiz,
+                Usuario.id_ficha == id_ficha,
+                Rol.nombre_rol.ilike(NOMBRE_ROL_APRENDIZ),
+            )
+            .first()
+        )
+        if not aprendiz:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="El aprendiz no existe o no pertenece a esta ficha.",
+            )
+
+        tareas = (
+            self.db.query(Tarea)
+            .filter(Tarea.id_ficha == id_ficha)
+            .order_by(Tarea.fecha_creacion.desc())
+            .all()
+        )
+        # Materias de la ficha = las asignadas a algún instructor + las que ya tienen tareas.
+        ids_competencia = {
+            a.id_competencia
+            for a in self.db.query(AsignacionInstructor)
+            .filter(AsignacionInstructor.id_ficha == id_ficha)
+            .all()
+        } | {t.id_competencia for t in tareas}
+
+        entregas = {
+            e.id_tarea: e
+            for e in self.db.query(Entrega)
+            .filter(Entrega.id_aprendiz == id_aprendiz, Entrega.id_tarea.in_([t.id_tarea for t in tareas] or [0]))
+            .all()
+        }
+
+        competencias_out: List[dict] = []
+        for id_competencia in sorted(ids_competencia):
+            competencia = (
+                self.db.query(Competencia).filter(Competencia.id_competencia == id_competencia).first()
+            )
+            actividades = []
+            for tarea in (t for t in tareas if t.id_competencia == id_competencia):
+                entrega = entregas.get(tarea.id_tarea)
+                actividades.append(
+                    {
+                        "id_tarea": tarea.id_tarea,
+                        "titulo": tarea.titulo,
+                        "descripcion": tarea.descripcion,
+                        "fecha_limite": tarea.fecha_limite,
+                        "id_entrega": entrega.id_entrega if entrega else None,
+                        "estado": entrega.estado if entrega else None,
+                        "archivo_url": entrega.archivo_url if entrega else None,
+                        "tipo_archivo": _tipo_archivo(entrega.archivo_url) if entrega else None,
+                        "fecha_entrega": entrega.fecha_entrega if entrega else None,
+                        "nota": float(entrega.nota) if entrega and entrega.nota is not None else None,
+                        "comentario": entrega.comentario if entrega else None,
+                    }
+                )
+            competencias_out.append(
+                {
+                    "id_competencia": id_competencia,
+                    "nombre_competencia": competencia.nombre if competencia else "Materia",
+                    "actividades": actividades,
+                }
+            )
+
+        return {
+            "id_usuario": aprendiz.id_usuario,
+            "nombre_completo": " ".join(filter(None, [aprendiz.nombre, aprendiz.apellido])),
+            "numero_documento": aprendiz.numero_documento,
+            "id_ficha": id_ficha,
+            "numero_ficha": str(ficha.id_ficha),
+            "competencias": competencias_out,
+        }
+
     def obtener_competencia_detalle(self, id_instructor: int, trimestre: int, id_competencia: int) -> dict:
         self._obtener_instructor_o_404(id_instructor)
 
@@ -298,6 +452,58 @@ class CoordinadorService:
             ],
         }
 
+    # ------------------------------------------------------------
+    # Aprendices: perfil (solo lectura para el coordinador)
+    # ------------------------------------------------------------
+    def obtener_aprendiz_o_404(self, id_aprendiz: int) -> Usuario:
+        aprendiz = (
+            self.db.query(Usuario)
+            .join(Rol, Usuario.id_rol == Rol.id_rol)
+            .filter(Usuario.id_usuario == id_aprendiz, Rol.nombre_rol.ilike(NOMBRE_ROL_APRENDIZ))
+            .first()
+        )
+        if not aprendiz:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aprendiz no encontrado.")
+        return aprendiz
+
+    def obtener_aprendiz_detalle(self, id_aprendiz: int) -> dict:
+        """Perfil de un aprendiz aplanado usuario -> ficha -> programa."""
+        aprendiz = self.obtener_aprendiz_o_404(id_aprendiz)
+        ficha = aprendiz.ficha
+        programa = ficha.programa if ficha else None
+        total_archivos = (
+            self.db.query(func.count(ArchivoPortafolio.id_archivo))
+            .filter(ArchivoPortafolio.id_aprendiz == aprendiz.id_usuario)
+            .scalar()
+        ) or 0
+        return {
+            "id_usuario": aprendiz.id_usuario,
+            "nombre": aprendiz.nombre,
+            "apellido": aprendiz.apellido,
+            "nombre_completo": " ".join(filter(None, [aprendiz.nombre, aprendiz.apellido])),
+            "estado": aprendiz.estado,
+            "tipo_documento": aprendiz.tipo_documento,
+            "numero_documento": aprendiz.numero_documento,
+            "fecha_nacimiento": aprendiz.fecha_nacimiento,
+            "telefono": aprendiz.telefono,
+            "correo_personal": aprendiz.correo_personal,
+            "correo_sena": aprendiz.correo_sena,
+            "fecha_registro": aprendiz.fecha_creacion,
+            "informacion_adicional": aprendiz.informacion_adicional,
+            "hoja_vida_url": aprendiz.hoja_vida_url,
+            "id_ficha": ficha.id_ficha if ficha else None,
+            "estado_ficha": ficha.estado if ficha else None,
+            "trimestre": ficha.trimestre if ficha else None,
+            "horario_ficha": ficha.horario if ficha else None,
+            "jornada": jornada_de_horario(ficha.horario) if ficha else None,
+            "fecha_inicio_ficha": ficha.fecha_inicio if ficha else None,
+            "fecha_fin_ficha": ficha.fecha_fin if ficha else None,
+            "director_ficha": self._nombre_director_de_ficha(ficha) if ficha else None,
+            "programa_nombre": programa.nombre if programa else None,
+            "nivel_formacion": programa.nivel_formacion if programa else None,
+            "total_archivos_portafolio": total_archivos,
+        }
+
     def _obtener_instructor_o_404(self, id_instructor: int) -> Usuario:
         instructor = (
             self.db.query(Usuario)
@@ -323,28 +529,33 @@ class CoordinadorService:
 
     def _resolver_coordinacion(self, coordinador: Usuario) -> int:
         """
-        Programa.id_coordinacion es NOT NULL, pero el modal \"Añadir Programa\"
-        no la pide. Se toma la del coordinador autenticado; si su cuenta no
-        tiene una asignada (el seed_roles.py crea al primer coordinador sin
-        coordinación), se usa la única registrada. Con 0 o varias no hay
-        forma segura de adivinar, así que se pide resolverlo.
+        Programa.id_coordinacion es NOT NULL, pero el modal "Añadir Programa"
+        no la pide. Orden de decisión:
+          1. La coordinación de la cuenta del coordinador autenticado.
+          2. Si no tiene, la primera coordinación registrada (la de menor id).
+          3. Si no hay ninguna, se crea una "Coordinación general" para que
+             el usuario no tenga que ir antes a Gestión a crearla. Se puede
+             renombrar o reemplazar luego en Gestión > Coordinaciones.
         """
         if coordinador.id_coordinacion:
             return coordinador.id_coordinacion
 
-        existentes = self.db.query(Coordinacion.id_coordinacion).limit(2).all()
-        if len(existentes) == 1:
-            return existentes[0][0]
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "No se pudo determinar la coordinación del programa: tu cuenta no tiene "
-                "una asignada y hay "
-                + ("varias" if existentes else "ninguna")
-                + " registrada(s). Crea o asigna una en Gestión > Coordinaciones académicas."
-            ),
+        primera = (
+            self.db.query(Coordinacion.id_coordinacion)
+            .order_by(Coordinacion.id_coordinacion.asc())
+            .first()
         )
+        if primera:
+            return primera[0]
+
+        general = Coordinacion(
+            nombre_coordinacion="Coordinación general",
+            descripcion_coordinacion="Creada automáticamente al añadir el primer programa.",
+            area_enfoque="General",
+        )
+        self.db.add(general)
+        self.db.flush()  # obtiene el id; el commit lo hace crear_programa_sede
+        return general.id_coordinacion
 
     def crear_programa_sede(self, id_sede: int, datos: ProgramaSedeCreate, coordinador: Usuario) -> Programa:
         self.obtener_sede_por_id(id_sede)  # 404 si la sede no existe
